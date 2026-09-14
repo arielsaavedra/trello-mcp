@@ -52,7 +52,7 @@ Full-API support is exposed through a small catalog-driven tool set instead of h
 - `list_card_history`: create/copy/list-change/board-transfer evidence. Follow `next_before` while `has_more`; a full page conservatively indicates another page may exist. Omit `since` when establishing list age. Creation/last activity timestamps are not substitutes for uninterrupted time in a list.
 - `list_board_members`: mentions can be resolved even when members are not assigned to the card.
 - `list_cards(include_closed=true)`: archived duplicate checks, template flag, position and last activity.
-- `copy_template_card`: copies an open template on the same board, preserving its description/checklists without copying comments, attachments, members or due dates.
+- `copy_template_card`: copies a verified template on the same board, including hidden/archived templates, preserving its description/checklists without copying comments, attachments, members or due dates.
 - `move_card(position="top")`: first position in the destination list.
 - An explicit environment allowlist cannot be widened through onboarding tools.
 

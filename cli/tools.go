@@ -540,6 +540,7 @@ func registerOnboardingTools(server *mcp.Server, client *TrelloClient) {
 			"allowed_board_ids":   client.cfg.AllowedBoardIDs,
 			"config_path":         client.cfg.ConfigPath,
 			"api_scope":           client.cfg.APIScope,
+			"server_version":      version,
 		})
 	})
 

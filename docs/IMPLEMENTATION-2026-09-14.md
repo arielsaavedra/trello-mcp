@@ -53,6 +53,14 @@ Use [SETUP.md](SETUP.md) for installation, updating from upstream, scope choices
 
 ## Approved cleanup — follow-up on 2026-09-14
 
+### Verification after restarting Codex
+
+The fork's 29 tools became callable natively in the conversation. Actual native MCP reads verified the configured board, members, lists, card inventory, card/checklist details, comments/history with a second page and a generic REST query. The live board template was hidden/archived (`isTemplate=true`, `closed=true`). This exposed an overly strict source validation in `copy_template_card`.
+
+Version `0.3.0-sabiz.2` permits copying that valid template without unarchiving or modifying it, while still requiring `isTemplate=true` and the same allowed board. The synthetic template-copy test now covers an archived source and asserts the intended copy request. LoanFlow instructions were adjusted accordingly (1.5.1). The setup-status response now includes the running server version to distinguish an updated executable from an older process that still needs a reload. Source: [Atlassian's explanation of hidden, reusable card templates](https://community.atlassian.com/learning/course/optimize-trello-board-management/lesson/create-template-boards-and-cards-in-trello).
+
+Validation commands: `gofmt -w cli/templates.go cli/actions_test.go cli/tools.go`, `go -C cli test -race ./...`, `go -C cli vet ./...`, `sh scripts/build-local.sh`, and `python3 scripts/smoke_test.py --card-id <allowed-board-card>`. No live template was copied and no client card was edited to test write access. The chronological command ledger is retained in the task's output report.
+
 After the user explicitly confirmed the cleanup, uninstalled the global `@thadeu/trello-mcp@0.2.10` package. npm removed the launcher and its platform dependency (two packages). Removed only the two approved temporary files from the task's `work/` directory: `configure-trello.zsh` and `trello-tool-schemas.json`.
 
 ```sh

@@ -2,7 +2,7 @@
 
 ## SABIZ maintained fork
 
-This fork adds the complete official REST endpoint catalog (261 operations), generic read/write tools with JSON/form/multipart support, paginated comments/movement history, board member lookup, template copying, archived-card discovery and positioned moves. Version: `0.3.0-sabiz.1`.
+This fork adds the complete official REST endpoint catalog (261 operations), generic read/write tools with JSON/form/multipart support, paginated comments/movement history, board member lookup, template copying, archived-card discovery and positioned moves. Version: `0.3.0-sabiz.2`.
 
 **Install this fork from source using [docs/SETUP.md](docs/SETUP.md).** The npm/npx commands below are retained as upstream documentation and install the original package, not this fork. Existing board workflows stay scoped to their configured allowlist. Full-account API access requires a separate explicitly configured `TRELLO_API_SCOPE=account` entry; see the setup guide for boundaries and verification limits.
 

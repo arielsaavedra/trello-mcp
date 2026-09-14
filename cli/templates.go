@@ -27,8 +27,10 @@ func copyTemplateCard(client *TrelloClient, in copyTemplateInput) (*TrelloCard, 
 	if err != nil {
 		return nil, err
 	}
-	if template.IDBoard != in.BoardID || !template.IsTemplate || template.Closed {
-		return nil, fmt.Errorf("Source must be an open template card on the destination board")
+	// Trello hides reusable templates by archiving them; closed does not mean
+	// the template is unavailable. Never unarchive or mutate the source.
+	if template.IDBoard != in.BoardID || !template.IsTemplate {
+		return nil, fmt.Errorf("Source must be a template card on the destination board")
 	}
 	lists, err := client.ListLists(in.BoardID)
 	if err != nil {
@@ -46,7 +48,7 @@ func copyTemplateCard(client *TrelloClient, in copyTemplateInput) (*TrelloCard, 
 }
 
 func registerTemplateTool(server *mcp.Server, client *TrelloClient) {
-	mcp.AddTool(server, &mcp.Tool{Name: "copy_template_card", Description: "Create a card from a verified open template on the same allowed board, preserving its description and checklists. Does not copy comments, members, attachments or due dates. Requires write approval."}, func(_ context.Context, _ *mcp.CallToolRequest, in copyTemplateInput) (*mcp.CallToolResult, any, error) {
+	mcp.AddTool(server, &mcp.Tool{Name: "copy_template_card", Description: "Create a card from a verified template on the same allowed board, including hidden/archived templates, preserving its description and checklists. Does not change the source or copy comments, members, attachments or due dates. Requires write approval."}, func(_ context.Context, _ *mcp.CallToolRequest, in copyTemplateInput) (*mcp.CallToolResult, any, error) {
 		card, err := copyTemplateCard(client, in)
 		if err != nil {
 			return nil, nil, err
