@@ -50,3 +50,16 @@ On the installation host, Python helpers used an existing Python 3.11+ runtime b
 ## Maintenance and cleanup
 
 Use [SETUP.md](SETUP.md) for installation, updating from upstream, scope choices, rebuilding, testing and rollback. The user's standing instruction for this project is to document changes and terminal commands, propose cleanup at the end, and obtain confirmation before deleting files or uninstalling packages. The old npm connector is a cleanup candidate only after this build is verified; it was not removed during implementation. Keep Go, the active binary/source, credentials and the protected rollback copy until their removal is explicitly approved.
+
+## Approved cleanup — follow-up on 2026-09-14
+
+After the user explicitly confirmed the cleanup, uninstalled the global `@thadeu/trello-mcp@0.2.10` package. npm removed the launcher and its platform dependency (two packages). Removed only the two approved temporary files from the task's `work/` directory: `configure-trello.zsh` and `trello-tool-schemas.json`.
+
+```sh
+npm uninstall -g @thadeu/trello-mcp
+rm -- <task-directory>/work/configure-trello.zsh <task-directory>/work/trello-tool-schemas.json
+npm ls -g --depth=0 @thadeu/trello-mcp
+python3 scripts/smoke_test.py --card-id <allowed-board-test-card>
+```
+
+The npm listing returned an empty result (exit status 1, expected for an absent package). File existence checks confirmed both temporary files were removed and the fork executable remains. The post-cleanup MCP smoke test passed using the saved Codex configuration, confirming the fork operates independently of the removed npm package. No Trello writes were performed. The source repositories, native executable, Go, Node/npm, credentials, skill-validation environment and protected Codex rollback copy were retained. The current conversation's tool catalog still requires a server/app refresh or a new task to expose the newly configured tools natively.
