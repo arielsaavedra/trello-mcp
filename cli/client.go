@@ -12,6 +12,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 )
 
 const trelloAPIBase = "https://api.trello.com/1"
@@ -37,16 +38,19 @@ type TrelloLabel struct {
 }
 
 type TrelloCard struct {
-	ID          string        `json:"id"`
-	Name        string        `json:"name"`
-	Desc        string        `json:"desc"`
-	URL         string        `json:"url"`
-	Closed      bool          `json:"closed"`
-	IDBoard     string        `json:"idBoard"`
-	IDList      string        `json:"idList"`
-	Due         *string       `json:"due"`
-	DueComplete bool          `json:"dueComplete"`
-	Labels      []TrelloLabel `json:"labels"`
+	ID               string        `json:"id"`
+	Name             string        `json:"name"`
+	Desc             string        `json:"desc"`
+	URL              string        `json:"url"`
+	Closed           bool          `json:"closed"`
+	IDBoard          string        `json:"idBoard"`
+	IDList           string        `json:"idList"`
+	Due              *string       `json:"due"`
+	DueComplete      bool          `json:"dueComplete"`
+	Labels           []TrelloLabel `json:"labels"`
+	IsTemplate       bool          `json:"isTemplate"`
+	Pos              float64       `json:"pos"`
+	DateLastActivity string        `json:"dateLastActivity"`
 }
 
 type TrelloAttachment struct {
@@ -128,7 +132,7 @@ type TrelloClient struct {
 }
 
 func NewTrelloClient(cfg *AppConfig) *TrelloClient {
-	return &TrelloClient{cfg: cfg, http: &http.Client{}}
+	return &TrelloClient{cfg: cfg, http: &http.Client{Timeout: 30 * time.Second}}
 }
 
 func (c *TrelloClient) ListAllBoards() ([]TrelloBoard, error) {
@@ -141,17 +145,13 @@ func (c *TrelloClient) ListAllBoards() ([]TrelloBoard, error) {
 }
 
 func (c *TrelloClient) ListBoards() ([]TrelloBoard, error) {
-	boards, err := c.ListAllBoards()
-	if err != nil {
-		return nil, err
-	}
-
-	allowed := make([]TrelloBoard, 0, len(boards))
-
-	for _, b := range boards {
-		if contains(c.cfg.AllowedBoardIDs, b.ID) {
-			allowed = append(allowed, b)
+	allowed := make([]TrelloBoard, 0, len(c.cfg.AllowedBoardIDs))
+	for _, id := range c.cfg.AllowedBoardIDs {
+		board, err := c.GetBoard(id)
+		if err != nil {
+			return nil, err
 		}
+		allowed = append(allowed, *board)
 	}
 
 	return allowed, nil
@@ -175,16 +175,28 @@ func (c *TrelloClient) ListLists(boardID string) ([]TrelloList, error) {
 	return lists, err
 }
 
-func (c *TrelloClient) ListCards(boardID string, listID *string) ([]TrelloCard, error) {
+func (c *TrelloClient) ListCards(boardID string, listID *string, includeClosed bool) ([]TrelloCard, error) {
 	path := "/boards/" + boardID + "/cards"
 
 	if listID != nil && *listID != "" {
+		lists, err := c.ListLists(boardID)
+		if err != nil {
+			return nil, err
+		}
+		if !hasListID(lists, *listID) {
+			return nil, fmt.Errorf("List does not belong to the allowed board")
+		}
 		path = "/lists/" + *listID + "/cards"
+	}
+	filter := "open"
+	if includeClosed {
+		filter = "all"
 	}
 
 	var cards []TrelloCard
 	err := c.request(http.MethodGet, path, map[string]string{
-		"fields": "id,name,desc,url,closed,idBoard,idList,due,dueComplete,labels",
+		"fields": "id,name,desc,url,closed,idBoard,idList,due,dueComplete,labels,isTemplate,pos,dateLastActivity",
+		"filter": filter,
 	}, &cards)
 
 	return cards, err
@@ -193,7 +205,7 @@ func (c *TrelloClient) ListCards(boardID string, listID *string) ([]TrelloCard, 
 func (c *TrelloClient) GetCard(cardID string) (*TrelloCard, error) {
 	var card TrelloCard
 	err := c.request(http.MethodGet, "/cards/"+cardID, map[string]string{
-		"fields": "id,name,desc,url,closed,idBoard,idList,due,dueComplete,labels",
+		"fields": "id,name,desc,url,closed,idBoard,idList,due,dueComplete,labels,isTemplate,pos,dateLastActivity",
 	}, &card)
 
 	return &card, err
@@ -373,9 +385,16 @@ func (c *TrelloClient) UpdateCard(cardID string, input UpdateCardInput) (*Trello
 	return &card, err
 }
 
-func (c *TrelloClient) MoveCard(cardID, idList string) (*TrelloCard, error) {
+func (c *TrelloClient) MoveCard(cardID, idList string, position *string) (*TrelloCard, error) {
 	var card TrelloCard
-	err := c.request(http.MethodPut, "/cards/"+cardID, map[string]string{"idList": idList}, &card)
+	query := map[string]string{"idList": idList}
+	if position != nil {
+		if *position != "top" && *position != "bottom" {
+			return nil, fmt.Errorf("position must be top or bottom")
+		}
+		query["pos"] = *position
+	}
+	err := c.request(http.MethodPut, "/cards/"+cardID, query, &card)
 
 	return &card, err
 }
@@ -486,7 +505,7 @@ func (c *TrelloClient) uploadAttachmentFile(input AddAttachmentInput) (*TrelloAt
 
 	resp, err := c.http.Do(req)
 	if err != nil {
-		return nil, err
+		return nil, safeTransportError(err)
 	}
 
 	defer resp.Body.Close()
@@ -526,7 +545,7 @@ func (c *TrelloClient) request(method, path string, query map[string]string, out
 
 	resp, err := c.http.Do(req)
 	if err != nil {
-		return err
+		return safeTransportError(err)
 	}
 
 	defer resp.Body.Close()
@@ -540,6 +559,15 @@ func (c *TrelloClient) request(method, path string, query map[string]string, out
 	}
 
 	return json.NewDecoder(resp.Body).Decode(out)
+}
+
+// net/http URL errors include query credentials. Report only the underlying
+// transport cause so failed requests never put a token into MCP output.
+func safeTransportError(err error) error {
+	if e, ok := err.(*url.Error); ok {
+		return fmt.Errorf("Trello transport error: %v", e.Err)
+	}
+	return fmt.Errorf("Trello transport error")
 }
 
 func safeErrorMessage(resp *http.Response) string {

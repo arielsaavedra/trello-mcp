@@ -24,12 +24,21 @@ type AppConfig struct {
 	AllowedBoardIDs    []string
 	OnboardingRequired bool
 	ConfigPath         string
+	BoardIDsLocked     bool
+	APIScope           string
 }
 
 var credentialEnvKeys = []string{"TRELLO_API_KEY", "TRELLO_TOKEN", "TRELLO_ALLOWED_BOARD_IDS"}
 
 func loadConfig() (*AppConfig, error) {
 	env := mergedEnv()
+	apiScope := os.Getenv("TRELLO_API_SCOPE")
+	if apiScope == "" {
+		apiScope = "boards"
+	}
+	if apiScope != "boards" && apiScope != "account" {
+		return nil, fmt.Errorf("TRELLO_API_SCOPE must be boards or account")
+	}
 
 	apiKey := strings.TrimSpace(env["TRELLO_API_KEY"])
 	token := strings.TrimSpace(env["TRELLO_TOKEN"])
@@ -57,6 +66,8 @@ func loadConfig() (*AppConfig, error) {
 		AllowedBoardIDs:    allowedBoardIDs,
 		OnboardingRequired: len(allowedBoardIDs) == 0,
 		ConfigPath:         configPath,
+		BoardIDsLocked:     len(envBoardIDs) > 0,
+		APIScope:           apiScope,
 	}, nil
 }
 

@@ -1,8 +1,18 @@
 # trello-mcp
 
+## SABIZ maintained fork
+
+This fork adds the complete official REST endpoint catalog (261 operations), generic read/write tools with JSON/form/multipart support, paginated comments/movement history, board member lookup, template copying, archived-card discovery and positioned moves. Version: `0.3.0-sabiz.1`.
+
+**Install this fork from source using [docs/SETUP.md](docs/SETUP.md).** The npm/npx commands below are retained as upstream documentation and install the original package, not this fork. Existing board workflows stay scoped to their configured allowlist. Full-account API access requires a separate explicitly configured `TRELLO_API_SCOPE=account` entry; see the setup guide for boundaries and verification limits.
+
+Before removing obsolete packages/files, present the exact cleanup list and obtain the user's confirmation. Keep commands and results documented; never include credentials or borrower data in Git.
+
+## Upstream documentation
+
 Universal [Model Context Protocol](https://modelcontextprotocol.io) server for Trello. Works with any MCP-compatible client: Cursor, Claude Desktop, Gemini CLI, Codex, OpenCode, and others.
 
-Read and update Kanban cards on **allowlisted boards only**. Credentials stay in environment variables; nothing is logged.
+The upstream tools read and update Kanban cards on allowlisted boards. The fork's additional account scope is described above. Credentials are supplied locally through environment variables.
 
 ## Quick start
 

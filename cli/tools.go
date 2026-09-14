@@ -16,8 +16,9 @@ type listListsInput struct {
 }
 
 type listCardsInput struct {
-	BoardID string  `json:"board_id" jsonschema:"Trello board id"`
-	ListID  *string `json:"list_id,omitempty" jsonschema:"Optional Trello list id"`
+	BoardID       string  `json:"board_id" jsonschema:"Trello board id"`
+	ListID        *string `json:"list_id,omitempty" jsonschema:"Optional Trello list id"`
+	IncludeClosed bool    `json:"include_closed,omitempty" jsonschema:"Include archived cards for duplicate checks; default false"`
 }
 
 type cardIDInput struct {
@@ -44,8 +45,9 @@ type updateCardInput struct {
 }
 
 type moveCardInput struct {
-	CardID string `json:"card_id" jsonschema:"Trello card id"`
-	ListID string `json:"list_id" jsonschema:"Destination list id"`
+	CardID   string  `json:"card_id" jsonschema:"Trello card id"`
+	ListID   string  `json:"list_id" jsonschema:"Destination list id"`
+	Position *string `json:"position,omitempty" jsonschema:"Optional top or bottom position in the destination list"`
 }
 
 type addCommentInput struct {
@@ -81,7 +83,7 @@ type updateCheckItemInput struct {
 	ChecklistID string  `json:"checklist_id" jsonschema:"Trello checklist id"`
 	CheckItemID string  `json:"check_item_id" jsonschema:"Trello check item id"`
 	Name        *string `json:"name,omitempty" jsonschema:"New check item text"`
-	Checked     *bool  `json:"checked,omitempty" jsonschema:"Mark item complete or incomplete"`
+	Checked     *bool   `json:"checked,omitempty" jsonschema:"Mark item complete or incomplete"`
 	Due         *string `json:"due,omitempty" jsonschema:"Due date in ISO 8601 format, or empty string to clear"`
 }
 
@@ -100,6 +102,9 @@ type selectAllowedBoardsInput struct {
 
 func registerTools(server *mcp.Server, client *TrelloClient) {
 	registerOnboardingTools(server, client)
+	registerHistoryTools(server, client)
+	registerTemplateTool(server, client)
+	registerAPITools(server, client)
 
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "list_boards",
@@ -149,7 +154,7 @@ func registerTools(server *mcp.Server, client *TrelloClient) {
 			return nil, nil, err
 		}
 
-		cards, err := client.ListCards(in.BoardID, in.ListID)
+		cards, err := client.ListCards(in.BoardID, in.ListID, in.IncludeClosed)
 		if err != nil {
 			return nil, nil, err
 		}
@@ -301,7 +306,7 @@ func registerTools(server *mcp.Server, client *TrelloClient) {
 			return nil, nil, fmt.Errorf("List %s was not found on board %s", in.ListID, boardID)
 		}
 
-		card, err := client.MoveCard(in.CardID, in.ListID)
+		card, err := client.MoveCard(in.CardID, in.ListID, in.Position)
 		if err != nil {
 			return nil, nil, err
 		}
@@ -534,6 +539,7 @@ func registerOnboardingTools(server *mcp.Server, client *TrelloClient) {
 			"onboarding_required": false,
 			"allowed_board_ids":   client.cfg.AllowedBoardIDs,
 			"config_path":         client.cfg.ConfigPath,
+			"api_scope":           client.cfg.APIScope,
 		})
 	})
 
@@ -541,6 +547,13 @@ func registerOnboardingTools(server *mcp.Server, client *TrelloClient) {
 		Name:        "list_available_boards",
 		Description: "List all Trello boards accessible to the authenticated user (used during onboarding)",
 	}, func(_ context.Context, _ *mcp.CallToolRequest, in listAvailableBoardsInput) (*mcp.CallToolResult, any, error) {
+		if client.cfg.BoardIDsLocked {
+			boards, err := client.ListBoards()
+			if err != nil {
+				return nil, nil, err
+			}
+			return jsonResult(boards)
+		}
 		boards, err := client.ListAllBoards()
 		if err != nil {
 			return nil, nil, err
@@ -569,6 +582,9 @@ func registerOnboardingTools(server *mcp.Server, client *TrelloClient) {
 		Name:        "select_allowed_boards",
 		Description: "Save the boards the user chose during onboarding and enable the other Trello tools",
 	}, func(_ context.Context, _ *mcp.CallToolRequest, in selectAllowedBoardsInput) (*mcp.CallToolResult, any, error) {
+		if client.cfg.BoardIDsLocked {
+			return nil, nil, fmt.Errorf("Board selection is locked by TRELLO_ALLOWED_BOARD_IDS; change the local configuration to change scope")
+		}
 		unique := uniqueNonEmpty(in.BoardIDs)
 
 		if len(unique) == 0 {
