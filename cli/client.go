@@ -281,6 +281,13 @@ type UpdateCheckItemInput struct {
 }
 
 func (c *TrelloClient) UpdateCheckItem(checklistID, checkItemID string, input UpdateCheckItemInput) (*TrelloCheckItem, error) {
+	checklist, err := c.GetChecklist(checklistID)
+	if err != nil {
+		return nil, err
+	}
+	if checklist.IDCard == "" {
+		return nil, fmt.Errorf("Checklist has no parent card")
+	}
 	query := map[string]string{}
 
 	if input.Name != nil {
@@ -300,7 +307,7 @@ func (c *TrelloClient) UpdateCheckItem(checklistID, checkItemID string, input Up
 	}
 
 	var item TrelloCheckItem
-	err := c.request(http.MethodPut, "/checklists/"+checklistID+"/checkItems/"+checkItemID, query, &item)
+	err = c.request(http.MethodPut, "/cards/"+checklist.IDCard+"/checkItem/"+checkItemID, query, &item)
 
 	return &item, err
 }

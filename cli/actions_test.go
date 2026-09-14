@@ -188,3 +188,22 @@ func TestTransportErrorsDoNotExposeCredentials(t *testing.T) {
 		t.Fatal("credential leak")
 	}
 }
+
+func TestUpdateChecklistItemUsesPublishedCardEndpoint(t *testing.T) {
+	c := fakeClient(t, func(r *http.Request) (int, string) {
+		if r.Method == "GET" && r.URL.Path == "/1/checklists/checklist1" {
+			return 200, `{"id":"checklist1","idCard":"card1"}`
+		}
+		if r.Method != "PUT" || r.URL.Path != "/1/cards/card1/checkItem/item1" {
+			t.Fatal("Wrong checklist update endpoint", r.Method, r.URL.Path)
+		}
+		if r.URL.Query().Get("state") != "complete" {
+			t.Fatal("Milestone state not encoded correctly")
+		}
+		return 200, `{"id":"item1","state":"complete"}`
+	})
+	item, err := c.UpdateCheckItem("checklist1", "item1", UpdateCheckItemInput{Checked: ptr(true)})
+	if err != nil || item.State != "complete" {
+		t.Fatal("Checklist update failed", err)
+	}
+}
