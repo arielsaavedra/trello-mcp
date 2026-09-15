@@ -51,10 +51,13 @@ type apiWriteInput struct {
 	Files        map[string]string `json:"files,omitempty" jsonschema:"Multipart field name to absolute local file path, only for documented upload endpoints"`
 }
 type apiResponse struct {
-	Status      int    `json:"status"`
-	Data        any    `json:"data,omitempty"`
-	Encoding    string `json:"encoding,omitempty"`
-	ContentType string `json:"content_type,omitempty"`
+	BatchComplete      *bool    `json:"batch_complete,omitempty"`
+	BatchRoutes        []string `json:"batch_routes,omitempty"`
+	BatchFailedIndexes []int    `json:"batch_failed_indexes,omitempty"`
+	Status             int      `json:"status"`
+	Data               any      `json:"data,omitempty"`
+	Encoding           string   `json:"encoding,omitempty"`
+	ContentType        string   `json:"content_type,omitempty"`
 }
 
 var catalogOnce sync.Once
@@ -95,9 +98,20 @@ func resolveAPIPath(endpoint string, params map[string]string) (string, error) {
 	return path, nil
 }
 
-// Board mode fails closed for account-wide resources and batch/search routes.
+// Board mode fails closed for account-wide resources. Batch validates each child route.
 // Full API access requires an explicit local TRELLO_API_SCOPE=account setting.
 func (c *TrelloClient) resourceBoard(kind, id string) (string, error) {
+	key := kind + "/" + id
+	if board, ok := c.scopeCache[key]; ok {
+		return board, nil
+	}
+	board, err := c.resolveResourceBoard(kind, id)
+	if err == nil && c.scopeCache != nil {
+		c.scopeCache[key] = board
+	}
+	return board, err
+}
+func (c *TrelloClient) resolveResourceBoard(kind, id string) (string, error) {
 	if !cardReference.MatchString(id) {
 		return "", fmt.Errorf("Resource reference must be an id or shortlink")
 	}
@@ -105,11 +119,26 @@ func (c *TrelloClient) resourceBoard(kind, id string) (string, error) {
 		return id, nil
 	}
 	if kind == "checklists" {
-		v, err := c.GetChecklist(id)
+		var v struct {
+			IDCard string `json:"idCard"`
+		}
+		err := c.request(http.MethodGet, "/checklists/"+id, map[string]string{"fields": "idCard", "checkItems": "none"}, &v)
 		if err != nil {
 			return "", err
 		}
 		return c.resourceBoard("cards", v.IDCard)
+	}
+	if kind == "actions" && c.scopeCache != nil {
+		var board struct {
+			ID string `json:"id"`
+		}
+		if err := c.request(http.MethodGet, "/actions/"+id+"/board", map[string]string{"fields": "id"}, &board); err != nil {
+			return "", err
+		}
+		if board.ID == "" {
+			return "", fmt.Errorf("Cannot establish board scope for this action")
+		}
+		return board.ID, nil
 	}
 	var v struct {
 		IDBoard   string `json:"idBoard"`
@@ -275,7 +304,14 @@ func (c *TrelloClient) callAPI(in apiWriteInput) (*apiResponse, error) {
 	if err := rejectCredentialParams(in.Body); err != nil {
 		return nil, err
 	}
-	if err := c.checkAPIScope(path, in); err != nil {
+	var batchRoutes []string
+	if path == "/batch" {
+		batchRoutes, err = c.prepareBatch(in)
+		if err != nil {
+			return nil, err
+		}
+		in.Query = map[string]any{"urls": strings.Join(batchRoutes, ",")}
+	} else if err := c.checkAPIScope(path, in); err != nil {
 		return nil, err
 	}
 	u, _ := url.Parse(trelloAPIBase + path)
@@ -373,6 +409,9 @@ func (c *TrelloClient) callAPI(in apiWriteInput) (*apiResponse, error) {
 			out.Encoding = "base64"
 		}
 	}
+	if batchRoutes != nil {
+		summarizeBatch(out, batchRoutes)
+	}
 	return out, nil
 }
 
@@ -463,7 +502,7 @@ func registerAPITools(server *mcp.Server, client *TrelloClient) {
 		visit(pathParameters)
 		return jsonResult(map[string]any{"endpoint": in.Endpoint, "method": strings.ToUpper(in.Method), "operation": op, "path_parameters": pathParameters, "definitions": refs, "configured_scope": client.cfg.APIScope})
 	})
-	mcp.AddTool(server, &mcp.Tool{Name: "trello_api_read", Description: "Execute a GET operation from the official Trello REST catalog. Automatically authenticates; respects configured board scope. Pagination is explicit; inspect endpoint parameters and continue as needed.", Annotations: &mcp.ToolAnnotations{ReadOnlyHint: true}}, func(_ context.Context, _ *mcp.CallToolRequest, in apiReadInput) (*mcp.CallToolResult, any, error) {
+	mcp.AddTool(server, &mcp.Tool{Name: "trello_api_read", Description: "Execute a GET operation from the official Trello REST catalog. Automatically authenticates; respects configured board scope. Supports /batch with 1-10 validated relative GET routes in query.urls; encode commas within query values as %2C. Inspect batch_complete and per-item results; retry only failed reads. Pagination is explicit.", Annotations: &mcp.ToolAnnotations{ReadOnlyHint: true}}, func(_ context.Context, _ *mcp.CallToolRequest, in apiReadInput) (*mcp.CallToolResult, any, error) {
 		out, err := client.callAPI(apiWriteInput{Endpoint: in.Endpoint, Method: "GET", PathParams: in.PathParams, Query: in.Query})
 		if err != nil {
 			return nil, nil, err

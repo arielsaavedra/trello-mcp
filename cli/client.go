@@ -127,8 +127,9 @@ func (e *TrelloAPIError) Error() string {
 }
 
 type TrelloClient struct {
-	cfg  *AppConfig
-	http *http.Client
+	scopeCache map[string]string // non-nil only on a request-local batch validation copy
+	cfg        *AppConfig
+	http       *http.Client
 }
 
 func NewTrelloClient(cfg *AppConfig) *TrelloClient {
