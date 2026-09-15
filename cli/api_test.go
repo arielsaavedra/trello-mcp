@@ -183,7 +183,7 @@ func TestMCPToolsAndLockedBoardSelection(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer cs.Close()
-	for _, name := range []string{"list_card_comments", "list_card_history"} {
+	for _, name := range []string{"list_card_comments", "list_card_history", "list_card_review_history"} {
 		r, err := cs.CallTool(ctx, &mcp.CallToolParams{Name: name, Arguments: map[string]any{"card_id": "card1"}})
 		if err != nil || r.IsError {
 			t.Fatal("read tool failed", name, err)

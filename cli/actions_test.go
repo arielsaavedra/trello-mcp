@@ -6,6 +6,9 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"reflect"
+	"sort"
+	"strconv"
 	"strings"
 	"testing"
 )
@@ -205,5 +208,65 @@ func TestUpdateChecklistItemUsesPublishedCardEndpoint(t *testing.T) {
 	item, err := c.UpdateCheckItem("checklist1", "item1", UpdateCheckItemInput{Checked: ptr(true)})
 	if err != nil || item.State != "complete" {
 		t.Fatal("Checklist update failed", err)
+	}
+}
+
+func TestCombinedReviewMatchesSeparateStreams(t *testing.T) {
+	rows := []TrelloAction{
+		{ID: "333333333333333333333333", Type: "commentCard", Date: "2026-01-03T00:00:00Z", MemberCreator: &TrelloMember{ID: "m", Username: "owner"}, Data: json.RawMessage(`{"text":"Revised status","dateLastEdited":"2026-01-03T01:00:00Z","replyTo":"previous"}`)},
+		{ID: "222222222222222222222222", Type: "updateCard", Date: "2026-01-02T00:00:00Z", Data: json.RawMessage(`{"listBefore":{"id":"old"},"listAfter":{"id":"new"},"old":{"idList":"old"}}`)},
+		{ID: "111111111111111111111111", Type: "createCard", Date: "2026-01-01T00:00:00Z", Data: json.RawMessage(`{"list":{"id":"old"}}`)},
+	}
+	calls := 0
+	c := fakeClient(t, func(r *http.Request) (int, string) {
+		calls++
+		if r.URL.Path == "/1/cards/card1" {
+			return 200, `{"idBoard":"allowed"}`
+		}
+		q := r.URL.Query()
+		filtered := []TrelloAction{}
+		for _, a := range rows {
+			if (q.Get("filter") == reviewFilter || (q.Get("filter") == "commentCard") == (a.Type == "commentCard")) && (q.Get("before") == "" || a.ID < q.Get("before")) {
+				filtered = append(filtered, a)
+			}
+		}
+		limit, _ := strconv.Atoi(q.Get("limit"))
+		if len(filtered) > limit {
+			filtered = filtered[:limit]
+		}
+		b, _ := json.Marshal(filtered)
+		return 200, string(b)
+	})
+	read := func(filter string) []TrelloAction {
+		t.Helper()
+		all := []TrelloAction{}
+		in := actionPageInput{CardID: "card1", Limit: ptr(2)}
+		for {
+			p, e := readCardActions(c, in, filter)
+			if e != nil {
+				t.Fatal(e)
+			}
+			all = append(all, p.Actions...)
+			if !p.HasMore {
+				return all
+			}
+			in.Before = ptr(p.NextBefore)
+		}
+	}
+	separate := append(read("commentCard"), read(historyFilter)...)
+	separateCalls := calls
+	calls = 0
+	combined := read(reviewFilter)
+	sort.Slice(separate, func(i, j int) bool { return separate[i].ID > separate[j].ID })
+	if !reflect.DeepEqual(combined, separate) {
+		t.Fatal("combined stream lost evidence")
+	}
+	if calls >= separateCalls {
+		t.Fatalf("no reduction combined=%d separate=%d", calls, separateCalls)
+	}
+	// A deleted comment disappears from a fresh combined read; no cached action is retained.
+	rows = rows[1:]
+	if len(read(reviewFilter)) != 2 {
+		t.Fatal("deleted comment retained")
 	}
 }
