@@ -2,7 +2,7 @@
 
 ## SABIZ maintained fork
 
-This fork adds the complete official REST endpoint catalog (261 operations), generic read/write tools with JSON/form/multipart support, paginated comments/movement history, board member lookup, template copying, archived-card discovery and positioned moves. Version: `0.3.0-sabiz.4`.
+This fork adds the complete official REST endpoint catalog (261 operations), generic read/write tools with JSON/form/multipart support, paginated comments/movement history, board member lookup, template copying, archived-card discovery and positioned moves. Version: `0.3.0-sabiz.5`.
 
 **Install this fork from source using [docs/SETUP.md](docs/SETUP.md).** The npm/npx commands below are retained as upstream documentation and install the original package, not this fork. Existing board workflows stay scoped to their configured allowlist. Full-account API access requires a separate explicitly configured `TRELLO_API_SCOPE=account` entry; see the setup guide for boundaries and verification limits.
 
@@ -384,3 +384,9 @@ MIT — Copyright (c) 2026 Thadeu Esteves. See [LICENSE](LICENSE).
 ## Scoped GET batching
 
 `trello_api_read` supports `/batch` with 1–10 validated relative GET routes, preserving board scope. See [batch usage and validation](docs/BATCH.md). Batch support does not change write permissions or application-level label rules.
+
+## Selective card snapshots
+
+From `0.3.0-sabiz.5`, `get_card` retains attachments/checklists by default, but accepts `include_attachments=false` and/or `include_checklists=false` when not needed. Omitted collections are named in `omitted`; they are unknown, not empty. One metadata-only ownership probe precedes one combined content read, instead of the former four-request pattern. Application-level label checks still come first.
+
+A read-only comparison on 13 eligible active Prospects/To Qualify cards returned identical default results (23,935 serialized bytes in each path): 52 versus 26 HTTP calls; 6,282 versus 3,585 ms in the compared read segments. Inventory/selection overhead and other services are excluded. This is a one-sample input benchmark, not end-to-end Planning speed or a guarantee. Tests: `go test -race ./...`, `go vet ./...`; opt-in `TRELLO_SELECTIVE_LIVE_TEST=1 go test -run TestSelectiveLiveEquivalence -v` uses configured credentials without printing borrower data.

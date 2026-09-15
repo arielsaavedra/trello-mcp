@@ -85,6 +85,7 @@ type TrelloChecklist struct {
 }
 
 type CardWithAttachments struct {
+	Omitted []string `json:"omitted,omitempty"`
 	TrelloCard
 	Attachments []TrelloAttachment `json:"attachments"`
 	Checklists  []TrelloChecklist  `json:"checklists"`
@@ -318,22 +319,32 @@ func (c *TrelloClient) DeleteCheckItem(checklistID, checkItemID string) error {
 }
 
 func (c *TrelloClient) GetCardWithAttachments(cardID string) (*CardWithAttachments, error) {
-	card, err := c.GetCard(cardID)
-	if err != nil {
-		return nil, err
-	}
+	return c.GetCardSnapshot(cardID, true, true)
+}
 
-	attachments, err := c.ListAttachments(cardID)
-	if err != nil {
-		return nil, err
+func (c *TrelloClient) GetCardSnapshot(cardID string, attachments, checklists bool) (*CardWithAttachments, error) {
+	query := map[string]string{
+		"fields":      "id,name,desc,url,closed,idBoard,idList,due,dueComplete,labels,isTemplate,pos,dateLastActivity",
+		"attachments": boolStr(attachments),
 	}
-
-	checklists, err := c.ListChecklists(cardID)
-	if err != nil {
-		return nil, err
+	if attachments {
+		query["attachment_fields"] = "id,name,url,mimeType,bytes,date,isUpload"
 	}
-
-	return &CardWithAttachments{TrelloCard: *card, Attachments: attachments, Checklists: checklists}, nil
+	if checklists {
+		query["checklists"] = "all"
+		query["checklist_fields"] = "id,name,idCard"
+	} else {
+		query["checklists"] = "none"
+	}
+	var out CardWithAttachments
+	err := c.request(http.MethodGet, "/cards/"+cardID, query, &out)
+	if !attachments {
+		out.Omitted = append(out.Omitted, "attachments")
+	}
+	if !checklists {
+		out.Omitted = append(out.Omitted, "checklists")
+	}
+	return &out, err
 }
 
 func (c *TrelloClient) CreateCard(input CreateCardInput) (*TrelloCard, error) {

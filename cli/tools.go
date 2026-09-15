@@ -21,6 +21,12 @@ type listCardsInput struct {
 	IncludeClosed bool    `json:"include_closed,omitempty" jsonschema:"Include archived cards for duplicate checks; default false"`
 }
 
+type cardReadInput struct {
+	CardID             string `json:"card_id"`
+	IncludeAttachments *bool  `json:"include_attachments,omitempty" jsonschema:"Include attachment metadata; default true for compatibility"`
+	IncludeChecklists  *bool  `json:"include_checklists,omitempty" jsonschema:"Include checklists and items; default true for compatibility"`
+}
+
 type cardIDInput struct {
 	CardID string `json:"card_id" jsonschema:"Trello card id"`
 }
@@ -164,8 +170,8 @@ func registerTools(server *mcp.Server, client *TrelloClient) {
 
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "get_card",
-		Description: "Get a Trello card by id, including attachments and checklists",
-	}, func(_ context.Context, _ *mcp.CallToolRequest, in cardIDInput) (*mcp.CallToolResult, any, error) {
+		Description: "Get a scoped Trello card; attachments/checklists default true and can be explicitly omitted when not needed. Uses one metadata scope probe and one combined content read.",
+	}, func(_ context.Context, _ *mcp.CallToolRequest, in cardReadInput) (*mcp.CallToolResult, any, error) {
 		if err := ensureOnboardingComplete(client.cfg); err != nil {
 			return nil, nil, err
 		}
@@ -174,7 +180,7 @@ func registerTools(server *mcp.Server, client *TrelloClient) {
 			return nil, nil, err
 		}
 
-		card, err := client.GetCardWithAttachments(in.CardID)
+		card, err := client.GetCardSnapshot(in.CardID, in.IncludeAttachments == nil || *in.IncludeAttachments, in.IncludeChecklists == nil || *in.IncludeChecklists)
 		if err != nil {
 			return nil, nil, err
 		}
@@ -669,16 +675,14 @@ func ensureBoardAccess(cfg *AppConfig, boardID string) error {
 }
 
 func ensureCardBoardAccess(client *TrelloClient, cardID string) (string, error) {
-	card, err := client.GetCard(cardID)
+	board, err := client.resourceBoard("cards", cardID)
 	if err != nil {
 		return "", err
 	}
-
-	if !contains(client.cfg.AllowedBoardIDs, card.IDBoard) {
-		return "", &TrelloMcpError{Message: fmt.Sprintf("Board %s is not in TRELLO_ALLOWED_BOARD_IDS", card.IDBoard)}
+	if err := ensureBoardAccess(client.cfg, board); err != nil {
+		return "", err
 	}
-
-	return card.IDBoard, nil
+	return board, nil
 }
 
 func ensureChecklistBoardAccess(client *TrelloClient, checklistID string) (string, error) {
