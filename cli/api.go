@@ -80,6 +80,26 @@ func operation(endpoint, method string) (map[string]any, error) {
 	if err := json.Unmarshal(raw, &op); err != nil {
 		return nil, err
 	}
+	// Nested card resources accept these parameters, omitted by upstream OpenAPI.
+	// Keep the correction here so discovery and batch validation share one contract.
+	if strings.EqualFold(method, "GET") && (endpoint == "/boards/{id}/cards" || endpoint == "/lists/{id}/cards") {
+		params, _ := op["parameters"].([]any)
+		for _, p := range []map[string]any{
+			{"name": "fields", "in": "query", "description": "Comma-separated card fields; use id,idLabels for scope discovery", "schema": map[string]any{"type": "string"}},
+			{"name": "filter", "in": "query", "schema": map[string]any{"type": "string", "enum": []any{"all", "closed", "open", "visible"}}},
+		} {
+			found := false
+			for _, existing := range params {
+				if v, ok := existing.(map[string]any); ok && v["name"] == p["name"] && v["in"] == "query" {
+					found = true
+				}
+			}
+			if !found {
+				params = append(params, p)
+			}
+		}
+		op["parameters"] = params
+	}
 	return op, nil
 }
 func resolveAPIPath(endpoint string, params map[string]string) (string, error) {

@@ -90,10 +90,14 @@ func readCardActions(client *TrelloClient, in actionPageInput, filter string) (*
 	return page, nil
 }
 
+const historyFilter = "createCard,copyCard,updateCard:idList,moveCardToBoard,moveCardFromBoard"
+const reviewFilter = "commentCard," + historyFilter
+
 func registerHistoryTools(server *mcp.Server, client *TrelloClient) {
 	for _, spec := range []struct{ name, description, filter string }{
 		{"list_card_comments", "Read existing comments with author, timestamp and text, newest first. Follow next_before while has_more; a page is not the complete conversation.", "commentCard"},
-		{"list_card_history", "Read card creation, copy, list and board movement history, newest first. Follow next_before while has_more; omit since when establishing uninterrupted time in a list.", "createCard,copyCard,updateCard:idList,moveCardToBoard,moveCardFromBoard"},
+		{"list_card_history", "Read card creation, copy, list and board movement history, newest first. Follow next_before while has_more; omit since when establishing uninterrupted time in a list.", historyFilter},
+		{"list_card_review_history", "Read comments plus creation/copy/list/board transitions in one paginated stream. Preserves authors and full action data. Follow next_before until has_more is false; omit since to establish list entry. Does not cover unrelated action types.", reviewFilter},
 	} {
 		mcp.AddTool(server, &mcp.Tool{Name: spec.name, Description: spec.description, Annotations: &mcp.ToolAnnotations{ReadOnlyHint: true}}, func(_ context.Context, _ *mcp.CallToolRequest, in actionPageInput) (*mcp.CallToolResult, any, error) {
 			page, err := readCardActions(client, in, spec.filter)

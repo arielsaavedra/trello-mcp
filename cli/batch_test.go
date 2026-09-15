@@ -174,3 +174,48 @@ func TestBatchLiveComparison(t *testing.T) {
 	}
 	t.Log("Three individual metadata reads equal one batch (including encoded field commas); no remote mutations")
 }
+
+func TestBatchNestedCardDiscoveryContract(t *testing.T) {
+	for _, endpoint := range []string{"/boards/{id}/cards", "/lists/{id}/cards"} {
+		op, err := operation(endpoint, "GET")
+		if err != nil {
+			t.Fatal(err)
+		}
+		advertised := map[string]bool{}
+		for _, p := range op["parameters"].([]any) {
+			v := p.(map[string]any)
+			if v["in"] == "query" {
+				advertised[v["name"].(string)] = true
+			}
+		}
+		if !advertised["fields"] || !advertised["filter"] {
+			t.Fatal("discovery missing recipe")
+		}
+		route := strings.ReplaceAll(endpoint, "{id}", "allowed") + "?fields=id%2CidLabels&filter=all"
+		child, _, err := parseBatchRoute(route)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if child.Query["fields"] != "id,idLabels" {
+			t.Fatal("scope projection lost")
+		}
+		for _, extra := range []string{"&limit=1000", "&token=secret", "&fields=name", "&unknown=true"} {
+			if _, _, err := parseBatchRoute(route + extra); err == nil {
+				t.Fatal("invalid parameter accepted", extra)
+			}
+		}
+	}
+	c := fakeClient(t, func(r *http.Request) (int, string) {
+		if r.URL.Path != "/1/batch" || r.URL.Query().Get("urls") != "/boards/allowed/cards?fields=id%2CidLabels&filter=all" {
+			t.Fatal("unexpected read", r.URL.Path)
+		}
+		return 200, `[{"200":[{"id":"card1","idLabels":["label1"]}]}]`
+	})
+	out, err := c.callAPI(batchInput("/boards/allowed/cards?fields=id%2CidLabels&filter=all"))
+	if err != nil || !*out.BatchComplete {
+		t.Fatal("metadata batch failed", err)
+	}
+	if _, err := c.callAPI(batchInput("/boards/foreign/cards?fields=id%2CidLabels&filter=all")); err == nil {
+		t.Fatal("foreign board accepted")
+	}
+}

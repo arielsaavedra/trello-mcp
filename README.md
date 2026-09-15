@@ -390,3 +390,16 @@ MIT — Copyright (c) 2026 Thadeu Esteves. See [LICENSE](LICENSE).
 From `0.3.0-sabiz.5`, `get_card` retains attachments/checklists by default, but accepts `include_attachments=false` and/or `include_checklists=false` when not needed. Omitted collections are named in `omitted`; they are unknown, not empty. One metadata-only ownership probe precedes one combined content read, instead of the former four-request pattern. Application-level label checks still come first.
 
 A read-only comparison on 13 eligible active Prospects/To Qualify cards returned identical default results (23,935 serialized bytes in each path): 52 versus 26 HTTP calls; 6,282 versus 3,585 ms in the compared read segments. Inventory/selection overhead and other services are excluded. This is a one-sample input benchmark, not end-to-end Planning speed or a guarantee. Tests: `go test -race ./...`, `go vet ./...`; opt-in `TRELLO_SELECTIVE_LIVE_TEST=1 go test -run TestSelectiveLiveEquivalence -v` uses configured credentials without printing borrower data.
+
+### SABIZ 0.3.0-sabiz.6: fewer review reads
+
+- `list_card_review_history` returns comments plus creation, copy, list and board transitions in one stream, with the same author/raw action evidence and explicit pagination as the separate tools. Follow `next_before` until `has_more` is false; an edited/deleted comment requires a fresh read. This is not a snapshot validator or a complete stream of every Trello action type.
+- Batch discovery accepts nested board/list card `fields` and `filter`, including `/boards/<allowed>/cards?fields=id%2CidLabels&filter=all`. Scope checks, credential/path rejection and the ten-route maximum remain unchanged. `limit` remains unsupported on this recipe. The correction is shared with endpoint discovery and survives catalog refresh.
+- Keep Ariel-label gating before card content in LoanFlow. The connector enforces the configured board scope; it does not infer an agent's label scope.
+- Existing separate tools and individual reads remain compatible. Verify the live MCP version after the normal reload; building this version does not update a running process.
+
+The parameter correction follows Trello's [nested-resource documentation](https://developer.atlassian.com/cloud/trello/guides/rest-api/nested-resources/); the upstream OpenAPI omits some nested collection parameters.
+
+Read-only live comparison on September 15, 2026: 12 active Ariel Prospects/To Qualify cards; all action payloads matched after partitioning. Separate reads: 24 pages / 48 HTTP requests / 7,062 ms. Combined: 12 pages / 24 HTTP requests / 3,759 ms. Minimal individual and batch ID/label discovery also matched. This one serial segment excludes Outlook, CRM, Cliq, initial scope discovery and planning/report work; it is not an end-to-end speedup claim. No external writes were performed.
+
+Reproduce only when authorized: `TRELLO_REVIEW_LIVE_TEST=1 go test -run '^TestReviewLiveEquivalence$' -v` from `cli`, using the existing private configured environment. Do not print credentials or borrower data. Ordinary tests skip this live check.
