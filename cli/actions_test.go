@@ -148,12 +148,12 @@ func TestTemplateCopyAndMove(t *testing.T) {
 	c := fakeClient(t, func(r *http.Request) (int, string) {
 		switch r.URL.Path {
 		case "/1/cards/template":
-			return 200, `{"id":"template","idBoard":"allowed","isTemplate":true,"closed":true,"desc":"Keep this template"}`
+			return 200, `{"id":"template","idBoard":"allowed","isTemplate":true,"closed":true,"desc":"Keep this template","labels":[{"id":"label1"},{"id":"label2"}]}`
 		case "/1/boards/allowed/lists":
 			return 200, `[{"id":"list1"}]`
 		case "/1/cards":
 			q := r.URL.Query()
-			if r.Method != "POST" || q.Get("idCardSource") != "template" || q.Get("desc") != "Keep this template" || q.Get("keepFromSource") != "checklists" {
+			if r.Method != "POST" || q.Get("idCardSource") != "template" || q.Get("desc") != "Keep this template" || q.Get("keepFromSource") != "checklists" || q.Get("idLabels") != "label1,label2" || q.Get("pos") != "bottom" {
 				t.Fatal("template copy did not preserve intended source")
 			}
 			writes++
