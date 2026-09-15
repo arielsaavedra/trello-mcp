@@ -39,16 +39,21 @@ func copyTemplateCard(client *TrelloClient, in copyTemplateInput) (*TrelloCard, 
 	if !hasListID(lists, in.ListID) {
 		return nil, fmt.Errorf("Destination list not found on the allowed board")
 	}
+	labelIDs := make([]string, 0, len(template.Labels))
+	for _, label := range template.Labels {
+		labelIDs = append(labelIDs, label.ID)
+	}
 	var card TrelloCard
 	err = client.request(http.MethodPost, "/cards", map[string]string{
 		"idList": in.ListID, "name": in.Name, "idCardSource": template.ID,
 		"keepFromSource": "checklists", "desc": template.Desc,
+		"idLabels": strings.Join(labelIDs, ","), "pos": "bottom",
 	}, &card)
 	return &card, err
 }
 
 func registerTemplateTool(server *mcp.Server, client *TrelloClient) {
-	mcp.AddTool(server, &mcp.Tool{Name: "copy_template_card", Description: "Create a card from a verified template on the same allowed board, including hidden/archived templates, preserving its description and checklists. Does not change the source or copy comments, members, attachments or due dates. Requires write approval."}, func(_ context.Context, _ *mcp.CallToolRequest, in copyTemplateInput) (*mcp.CallToolResult, any, error) {
+	mcp.AddTool(server, &mcp.Tool{Name: "copy_template_card", Description: "Create a card from a verified template on the same allowed board, including hidden/archived templates, preserving its description, checklists and labels at creation. Does not change the source or copy comments, members, attachments or due dates. Requires write approval."}, func(_ context.Context, _ *mcp.CallToolRequest, in copyTemplateInput) (*mcp.CallToolResult, any, error) {
 		card, err := copyTemplateCard(client, in)
 		if err != nil {
 			return nil, nil, err
